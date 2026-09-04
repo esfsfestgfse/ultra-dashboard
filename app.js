@@ -784,12 +784,18 @@
     state.legacySportsPending = true;
     state.legacySportsAt = Date.now();
     try {
-      const data = await fetchJson(WORKER_ORIGIN + "/sports", 12000);
-      if (!data || (!Array.isArray(data.live) && !Array.isArray(data.finals))) return;
-      if (!state.bundle) return;
-      state.bundle = Object.assign({}, state.bundle, { sports: data });
-      renderBundle(state.bundle);
-      refs.sourceHealth.textContent += " · compatibility score feed";
+      const endpoints = ["/sports-live", "/sports"];
+      for (let index = 0; index < endpoints.length; index += 1) {
+        try {
+          const data = await fetchJson(WORKER_ORIGIN + endpoints[index], 12000);
+          if (!data || (!Array.isArray(data.live) && !Array.isArray(data.finals))) continue;
+          if (!state.bundle) return;
+          state.bundle = Object.assign({}, state.bundle, { sports: data });
+          renderBundle(state.bundle);
+          refs.sourceHealth.textContent += " · compatibility score feed";
+          return;
+        } catch (error) {}
+      }
     } catch (error) {
       // The primary bundle remains the source of truth; this is only for the old Worker.
     } finally {
