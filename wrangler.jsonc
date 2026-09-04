@@ -1,0 +1,10 @@
+{
+  "name": "lucky-unit-4667",
+  "main": "cloudflare-dash-worker.js",
+  "compatibility_date": "2026-09-04",
+  "workers_dev": true,
+  "observability": {
+    "enabled": true
+  }
+  // Add a DASH_BUCKET R2 binding only if you want durable last-good snapshots.
+}
