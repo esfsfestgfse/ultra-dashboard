@@ -63,6 +63,8 @@
     lastSuccess: 0,
     failures: 0,
     lastError: "",
+    legacySportsAt: 0,
+    legacySportsPending: false,
     focus: null,
     lastFocusedElement: null,
     spotifyPopup: null,
@@ -754,6 +756,7 @@
       state.failures = 0;
       state.lastError = "";
       renderBundle(data);
+      if (!data.sports || !data.sports.sourceStatus) loadLegacySports();
       setEdgeStatus("ok", "Edge online");
       if (manual) showToast("Dashboard refreshed.");
     } catch (error) {
@@ -773,6 +776,24 @@
       state.loading = false;
       refs.refreshButton.disabled = false;
       scheduleRefresh();
+    }
+  }
+
+  async function loadLegacySports() {
+    if (state.legacySportsPending || Date.now() - state.legacySportsAt < 90000) return;
+    state.legacySportsPending = true;
+    state.legacySportsAt = Date.now();
+    try {
+      const data = await fetchJson(WORKER_ORIGIN + "/sports", 12000);
+      if (!data || (!Array.isArray(data.live) && !Array.isArray(data.finals))) return;
+      if (!state.bundle) return;
+      state.bundle = Object.assign({}, state.bundle, { sports: data });
+      renderBundle(state.bundle);
+      refs.sourceHealth.textContent += " · compatibility score feed";
+    } catch (error) {
+      // The primary bundle remains the source of truth; this is only for the old Worker.
+    } finally {
+      state.legacySportsPending = false;
     }
   }
 
