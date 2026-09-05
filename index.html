@@ -832,6 +832,7 @@ html[data-font="dense"] .ticker-label{font-size:14px}
     </div>
   </div>
 </div>
+<script src="sports-model.js?v=6"></script>
 <script>
 
 const PROXY = "https://lucky-unit-4667.tdy1990.workers.dev";
@@ -1946,6 +1947,160 @@ async function loadSports(){
   }
 }
 
+// ===== Normalized sports pipeline =====
+let sportsRefreshToken = 0;
+let sportsRefreshBusy = false;
+
+function sportsEscape(value){
+  return String(value == null ? "" : value).replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[ch]));
+}
+function sportsCompatGame(g){
+  if (!g) return null;
+  const first = (g.competitors || [])[0] || {};
+  const second = (g.competitors || [])[1] || {};
+  return {
+    id: g.id || "",
+    source: g.source || "",
+    sourcePriority: g.sourcePriority || 0,
+    sport: g.sport || "",
+    league: g.league || "Sports",
+    key: g.key || "sports",
+    ico: g.ico || sportIcon(g.key, g.league),
+    kind: g.kind === "team" ? "match" : (g.kind || "match"),
+    state: g.state || "live",
+    away: g.away || first.name || "",
+    home: g.home || second.name || "",
+    aScore: g.aScore != null ? g.aScore : (first.score || ""),
+    hScore: g.hScore != null ? g.hScore : (second.score || ""),
+    status: g.status || (g.state === "final" ? "FINAL" : "LIVE"),
+    startTime: g.startTime || "",
+    link: g.link || fctvLink(g.key, g.league, g.ico),
+    eventId: g.eventId || g.id || "",
+    espnPath: g.sourcePath || "",
+    aLogo: g.aLogo || "",
+    hLogo: g.hLogo || "",
+    lastPlay: g.metadata && (g.metadata.progress || g.metadata.lastPlay) || "",
+    venue: g.metadata && g.metadata.venue || "",
+    broadcast: g.metadata && g.metadata.broadcast || "",
+    detailLines: g.detailLines || [],
+    stale: !!g.stale,
+  };
+}
+function sportsRecordHTML(g, lane){
+  if (!g) return "";
+  const c = (g.competitors || []).filter(x => x && x.name);
+  const kind = g.kind || "team";
+  const ico = g.ico || sportIcon(g.key, g.league);
+  const league = sportsEscape(g.league || "Sports");
+  const away = sportsEscape(g.away || (c[0] && c[0].name) || "");
+  const home = sportsEscape(g.home || (c[1] && c[1].name) || "");
+  const aScore = sportsEscape(g.aScore == null ? (c[0] && c[0].score) || "" : g.aScore);
+  const hScore = sportsEscape(g.hScore == null ? (c[1] && c[1].score) || "" : g.hScore);
+  const statusRaw = g.state === "final" ? "FINAL" : (g.status || (g.state === "live" ? "LIVE" : "UPCOMING"));
+  const status = sportsEscape(String(statusRaw).replace(/\s+/g, " ").trim());
+  const href = sportsEscape(g.link || fctvLink(g.key, g.league, ico));
+  const eventId = sportsEscape(g.eventId || g.id || "");
+  const path = sportsEscape(g.sourcePath || "");
+  let display = "";
+  let dataAway = away;
+  let dataHome = home;
+  let dataAScore = aScore;
+  let dataHScore = hScore;
+
+  if (kind === "golf") {
+    const eventName = sportsEscape(g.away || g.league || "Golf");
+    const rows = c.slice(0, 5).map((item, index) => {
+      const rank = item.rank ? "T" + sportsEscape(item.rank) + " " : "";
+      const score = item.score ? " (" + sportsEscape(item.score) + ")" : "";
+      return rank + sportsEscape(item.name) + score;
+    }).join(" · ");
+    display = `<span class="team"><span class="tn">${eventName}</span></span><span class="sep">·</span><span class="team"><span class="tn">${rows}</span></span>`;
+    dataAway = eventName;
+    dataHome = sportsEscape(c[0] && c[0].name || "Golf");
+    dataAScore = "";
+    dataHScore = "";
+  } else if (kind === "racing") {
+    const raceText = sportsEscape(g.home || g.away || g.league || "Race");
+    display = `<span class="team"><span class="tn">${sportsEscape(g.away || g.league || "Race")}</span></span><span class="sep">·</span><span class="team"><span class="tn">${raceText}</span></span>`;
+    dataAway = sportsEscape(g.away || g.league || "Race");
+    dataHome = raceText;
+    dataAScore = "";
+    dataHScore = "";
+  } else {
+    const showScores = scoreIsPresent(dataAScore) && scoreIsPresent(dataHScore);
+    display = `<span class="team"><span class="tn">${away}</span></span>` +
+      (showScores ? `<span class="score">${dataAScore}</span><span class="sep">–</span><span class="score">${dataHScore}</span>` : `<span class="sep">@</span>`) +
+      `<span class="team"><span class="tn">${home}</span></span>`;
+  }
+  const liveClass = g.state === "live" ? " live" : "";
+  return `<a class="item sport-pick" href="#" data-key="${sportsEscape(g.key || "sports")}" data-league="${league}" data-ico="${sportsEscape(ico)}" data-away="${dataAway}" data-home="${dataHome}" data-ascore="${dataAScore}" data-hscore="${dataHScore}" data-status="${status}" data-stream="${href}" data-kind="${sportsEscape(kind === "team" ? "match" : kind)}" data-event="${eventId}" data-path="${path}"><span class="sport-ico">${sportsEscape(ico)}</span><span class="src">${league}</span>${display}<span class="status${liveClass}">${status}</span></a>`;
+}
+function paintSportsModel(state){
+  if (!state) return;
+  window.__sportsState = state;
+  const modelLive = (state.live || []).map(sportsCompatGame);
+  const compatLive = modelLive.filter(Boolean);
+  setLiveCounter(compatLive);
+  try { detectFavoriteScorePulse(compatLive); } catch(e) {}
+
+  const sportsEl = document.getElementById("sportsTicker");
+  if (sportsEl) {
+    const hasRaceHTML = Array.isArray(window.__racingItems) && window.__racingItems.length;
+    const nonRace = (state.live || []).filter(g => g.kind !== "racing");
+    let liveHTML = nonRace.map(g => sportsRecordHTML(g, "live")).join("");
+    if (!liveHTML && !hasRaceHTML) {
+      liveHTML = `<span class="item"><span class="sport-ico">🌍</span><span class="src">LIVE</span>No verified live games right now · checking again soon</span>`;
+    }
+    const raceHTML = hasRaceHTML ? window.__racingItems.join("") : (state.live || []).filter(g => g.kind === "racing").map(g => sportsRecordHTML(g, "live")).join("");
+    window.__lastSportsLiveHTML = liveHTML || `<span class="item"><span class="sport-ico">🌍</span><span class="src">LIVE</span>No verified live games right now · checking again soon</span>`;
+    applyTickerHTML(sportsEl, raceHTML + window.__lastSportsLiveHTML);
+  }
+
+  const todayEl = document.getElementById("sportsToday");
+  if (todayEl) {
+    const finalsHTML = (state.finals || []).map(g => sportsRecordHTML(g, "final")).join("");
+    applyTickerHTML(todayEl, finalsHTML || `<span class="item today-item">No finals yet today</span>`);
+    const track = todayEl.closest(".today-track");
+    if (track) track.classList.toggle("hidden", !finalsHTML);
+  }
+
+  const updated = document.getElementById("sportsUpdated");
+  const freshness = state.freshness || {};
+  if (updated) {
+    const stamp = new Date(state.generatedAt || Date.now()).toLocaleTimeString("en-US", { timeZone: "America/Chicago", hour: "2-digit", minute: "2-digit" });
+    updated.textContent = stamp + " CT · " + (freshness.fresh || 0) + " src";
+    updated.title = (state.sources || []).map(s => `${s.label}: ${s.ok ? (s.stale ? "last-good" : "ok") : "failed"}${s.count ? " · " + s.count : ""}`).join("\n");
+  }
+  const failed = Number(freshness.failed || 0);
+  const stale = Number(freshness.stale || 0);
+  setEdgeStatus(failed || stale ? "lag" : "ok", failed || stale ? `${failed} source failure(s), ${stale} last-good source(s)` : "Sports sources fresh");
+  try { refreshFocusFromLive(); } catch(e) {}
+}
+async function loadSportsV2(){
+  if (!window.DashSports || sportsRefreshBusy) return;
+  const token = ++sportsRefreshToken;
+  sportsRefreshBusy = true;
+  try {
+    const state = await window.DashSports.run({
+      edge: window.__edgeSportsSnapshot || null,
+      workerUrl: PROXY,
+      fetcher: window.fetch.bind(window),
+      proxy: viaProxy,
+      favorites: config.favorites,
+      racingGames: window.__racingGames || [],
+    });
+    if (token === sportsRefreshToken) paintSportsModel(state);
+  } catch(e) {
+    setEdgeStatus("lag", "Sports refresh failed; keeping last-good ticker");
+    if (!window.__sportsState) {
+      const el = document.getElementById("sportsTicker");
+      if (el && !el.textContent) el.innerHTML = `<span class="item"><span class="sport-ico">🌍</span><span class="src">LIVE</span>Sports temporarily unavailable · checking again soon</span>`;
+    }
+  } finally {
+    sportsRefreshBusy = false;
+  }
+}
+
 function openFocusBand(on){
   const band = document.getElementById("focusBand");
   const dash = document.querySelector(".dashboard");
@@ -2787,8 +2942,11 @@ function renderLiveDropdown(){
     if (g.kind === "golf" || g.kind === "racing") return !!(g.away || g.home);
     return scoreIsPresent(g.aScore) && scoreIsPresent(g.hScore);
   });
-  if(!games.length){
-    dd.innerHTML = `<div class="live-row live-empty">No live games right now</div>`;
+  const upcoming = (window.__sportsState && Array.isArray(window.__sportsState.upcoming))
+    ? window.__sportsState.upcoming.slice(0, 12).map(sportsCompatGame).filter(Boolean)
+    : [];
+  if(!games.length && !upcoming.length){
+    dd.innerHTML = `<div class="live-row live-empty">No verified live games right now</div>`;
     return;
   }
   // group by sport icon / league family
@@ -2841,6 +2999,13 @@ function renderLiveDropdown(){
       </span>
     </a>`;
   });
+  if (upcoming.length) {
+    htmlOut += `<div class="live-dd-head">Upcoming${favList().length ? " · favorites first" : ""}</div>`;
+    upcoming.forEach(g => {
+      const when = g.startTime ? formatCentral(g.startTime) : "Upcoming";
+      htmlOut += `<a class="live-row live-pick" href="#" data-key="${g.key||""}" data-league="${g.league||""}" data-ico="${g.ico||""}" data-away="${String(g.away||"").replace(/"/g,"&quot;")}" data-home="${String(g.home||"").replace(/"/g,"&quot;")}" data-ascore="" data-hscore="" data-status="${when.replace(/"/g,"&quot;")}" data-stream="${g.link||fctvLink(g.key,g.league,g.ico)}" data-kind="${g.kind||"match"}" data-event="${g.eventId||""}" data-path="${g.espnPath||""}"><span class="lr-league">${g.league||""}</span><span class="lr-match"><span class="lr-ico">${g.ico||"🏆"}</span><span class="lr-team">${g.away||""}</span><span class="lr-sep">vs</span><span class="lr-team">${g.home||""}</span><span class="lr-time">${when}</span></span></a>`;
+    });
+  }
   dd.innerHTML = htmlOut;
 }
 
@@ -3718,14 +3883,14 @@ function init(){
   // Edge backend first — one request fills news/sports/weather/stocks
   loadBundle().finally(() => {
     // Full client enrichment after edge snapshot
-    loadSports();
+    loadSportsV2();
     loadNews().catch(()=>{});
     loadWeather();
   });
 
   setInterval(() => { try { updateSpotifyNowPlaying(); } catch(e) {} }, 4000);
   setInterval(loadBundle, 60 * 1000);
-  setInterval(loadSports, 90 * 1000);
+  setInterval(loadSportsV2, 90 * 1000);
   setInterval(() => loadNews().catch(()=>{}), 10 * 60 * 1000);
   setInterval(loadWeather, 10 * 60 * 1000);
 }
@@ -3780,47 +3945,14 @@ async function loadBundle(){
       }
     }
 
-    // SPORTS LIVE — only adopt edge list if it has verified scores;
-    // never wipe a richer client list with empty/thin edge data
-    if (data.sports && Array.isArray(data.sports.live)) {
-      const edgeLive = data.sports.live
-        .filter(g => g && g.away && g.home && scoreIsPresent(g.aScore) && scoreIsPresent(g.hScore))
-        .map(g => ({
-          league: g.league, key: g.key, ico: g.ico || "🎯",
-          away: g.away, home: g.home,
-          aScore: g.aScore, hScore: g.hScore,
-          aLogo: g.aLogo || "", hLogo: g.hLogo || "",
-          kind: g.kind || "match", link: g.link || "https://www.espn.com",
-          status: g.status || "LIVE"
-        }));
-      const clientCount = (window.__liveGames || []).length;
-      // Prefer edge only when it has data; keep client if edge is empty
-      if (edgeLive.length) {
-        setLiveCounter(edgeLive);
-        const sportsEl = document.getElementById("sportsTicker");
-        if (sportsEl) {
-          const html = edgeLive.map(g => {
-            const ico = g.ico || "🎯";
-            return `<a class="item" href="${g.link||"https://www.espn.com"}" target="_blank" rel="noopener"><span class="sport-ico">${ico}</span><span class="src">${g.league}</span><span class="team"><span class="tn">${g.away}</span></span><span class="score">${g.aScore}</span><span class="sep">–</span><span class="score">${g.hScore}</span><span class="team"><span class="tn">${g.home}</span></span><span class="status live">${g.status||"LIVE"}</span></a>`;
-          }).join("");
-          window.__lastSportsLiveHTML = html;
-          applyTickerHTML(sportsEl, html);
-          try { setUpdated("sportsUpdated"); } catch(e) {}
-        }
-      } else if (!clientCount) {
-        setLiveCounter([]);
-      }
-      if (data.sports.finals && data.sports.finals.length) {
-        const todayEl = document.getElementById("sportsToday");
-        if (todayEl) {
-          const fh = data.sports.finals.slice(0, 40).filter(g =>
-            g && scoreIsPresent(g.aScore) && scoreIsPresent(g.hScore)
-          ).map(g =>
-            `<a class="item" href="${g.link||"https://www.espn.com"}" target="_blank" rel="noopener"><span class="sport-ico">${g.ico||"🎯"}</span><span class="src">${g.league}</span><span class="team"><span class="tn">${g.away}</span></span><span class="score">${g.aScore}</span><span class="sep">–</span><span class="score">${g.hScore}</span><span class="team"><span class="tn">${g.home}</span></span><span class="status">FINAL</span></a>`
-          ).join("");
-          if (fh) applyTickerHTML(todayEl, fh);
-        }
-      }
+    // SPORTS — keep the edge snapshot as an input to the normalized model.
+    // The model owns validation, dedupe, freshness, fallback, and painting so
+    // this bundle refresh can never replace a healthy ticker with an empty one.
+    if (data.sports && typeof data.sports === "object") {
+      window.__edgeSportsSnapshot = Object.assign({}, data.sports, {
+        stale: Boolean(data.stale || data.r2),
+      });
+      if (window.__sportsState && !sportsRefreshBusy) loadSportsV2();
     }
 
     // WEATHER chips + top strip (no bottom weather lane)
@@ -3914,7 +4046,7 @@ document.getElementById("btnSaveSettings")?.addEventListener("click", () => {
   const o = document.getElementById("settingsOverlay");
   if (o) { o.style.display = "none"; o.classList.remove("open"); }
   try { updateSpotifyNowPlaying(); } catch(e) {}
-  loadSports();
+  loadSportsV2();
   loadNews();
   loadWeather();
   loadBundle();

@@ -13,7 +13,7 @@
  *   SPOTIFY_CLIENT_SECRET, GNEWS_API_KEY, THENEWS_API_KEY, NEWSAPI_KEY
  */
 
-const VERSION = "5.1";
+const VERSION = "6.0";
 const APP_ORIGIN = "https://esfsfestgfse.github.io";
 const WORKER_ORIGIN = "https://lucky-unit-4667.tdy1990.workers.dev";
 const SPOTIFY_CLIENT_ID = "10cd2b5a4c74436f9d11c61c7f13b2c1";
@@ -43,20 +43,25 @@ const ESPN_NEWS_PATHS = [
 ];
 
 const SPORT_LEAGUES = [
-  { key: "nfl", path: "football/nfl", label: "NFL" },
-  { key: "mlb", path: "baseball/mlb", label: "MLB" },
-  { key: "nba", path: "basketball/nba", label: "NBA" },
-  { key: "nhl", path: "hockey/nhl", label: "NHL" },
-  { key: "wnba", path: "basketball/wnba", label: "WNBA" },
-  { key: "cfb", path: "football/college-football", label: "CFB" },
-  { key: "cbb", path: "basketball/mens-college-basketball", label: "CBB" },
-  { key: "mls", path: "soccer/usa.1", label: "MLS" },
-  { key: "epl", path: "soccer/eng.1", label: "EPL" },
-  { key: "laliga", path: "soccer/esp.1", label: "La Liga" },
-  { key: "ucl", path: "soccer/uefa.champions", label: "UCL" },
-  { key: "nwsl", path: "soccer/usa.w.1", label: "NWSL" },
-  { key: "afl", path: "australian-football/afl", label: "AFL" },
-  { key: "pga", path: "golf/pga", label: "PGA" },
+  { key: "nfl", path: "football/nfl", label: "NFL", sport: "football", kind: "team", ico: "🏈" },
+  { key: "mlb", path: "baseball/mlb", label: "MLB", sport: "baseball", kind: "team", ico: "⚾" },
+  { key: "nba", path: "basketball/nba", label: "NBA", sport: "basketball", kind: "team", ico: "🏀" },
+  { key: "nhl", path: "hockey/nhl", label: "NHL", sport: "hockey", kind: "team", ico: "🏒" },
+  { key: "wnba", path: "basketball/wnba", label: "WNBA", sport: "basketball", kind: "team", ico: "🏀" },
+  { key: "cfb", path: "football/college-football", label: "CFB", sport: "football", kind: "team", ico: "🏈" },
+  { key: "cbb", path: "basketball/mens-college-basketball", label: "CBB", sport: "basketball", kind: "team", ico: "🏀" },
+  { key: "mls", path: "soccer/usa.1", label: "MLS", sport: "soccer", kind: "team", ico: "⚽" },
+  { key: "nwsl", path: "soccer/usa.w.1", label: "NWSL", sport: "soccer", kind: "team", ico: "⚽" },
+  { key: "epl", path: "soccer/eng.1", label: "EPL", sport: "soccer", kind: "team", ico: "⚽" },
+  { key: "laliga", path: "soccer/esp.1", label: "La Liga", sport: "soccer", kind: "team", ico: "⚽" },
+  { key: "seriea", path: "soccer/ita.1", label: "Serie A", sport: "soccer", kind: "team", ico: "⚽" },
+  { key: "bundesliga", path: "soccer/ger.1", label: "Bundesliga", sport: "soccer", kind: "team", ico: "⚽" },
+  { key: "ucl", path: "soccer/uefa.champions", label: "UCL", sport: "soccer", kind: "team", ico: "⚽" },
+  { key: "mex", path: "soccer/mex.1", label: "Liga MX", sport: "soccer", kind: "team", ico: "⚽" },
+  { key: "atp", path: "tennis/atp", label: "ATP", sport: "tennis", kind: "tennis", ico: "🎾" },
+  { key: "wta", path: "tennis/wta", label: "WTA", sport: "tennis", kind: "tennis", ico: "🎾" },
+  { key: "ufc", path: "mma/ufc", label: "UFC", sport: "combat", kind: "combat", ico: "🥊" },
+  { key: "pga", path: "golf/pga", label: "PGA", sport: "golf", kind: "golf", ico: "⛳" },
 ];
 
 const PROXY_HOSTS = new Set([
@@ -66,6 +71,12 @@ const PROXY_HOSTS = new Set([
   "www.texastribune.org",
   "news.google.com",
   "site.api.espn.com",
+  "www.thesportsdb.com",
+  "statsapi.mlb.com",
+  "api-web.nhle.com",
+  "api.squiggle.com.au",
+  "cf.nascar.com",
+  "api.openf1.org",
   "api.open-meteo.com",
   "api.weather.gov",
   "query1.finance.yahoo.com",
@@ -461,76 +472,313 @@ function teamName(competitor) {
   return boundedText(competitor && (competitor.name || competitor.displayName), 60);
 }
 
+const SPORTS_SOURCE_PRIORITY = {
+  mlb: 100,
+  nhl: 100,
+  afl: 100,
+  espn: 80,
+  thesportsdb: 35,
+};
+
+function sportsHasScore(value) {
+  return value !== undefined && value !== null && String(value).trim() !== "";
+}
+
+function sportsCleanName(value) {
+  return boundedText(value, 80, "").replace(/\s{2,}/g, " ").trim();
+}
+
+function sportsGenericName(value) {
+  return !sportsCleanName(value) || /^(away|home|tbd|team\s*[12]?|unknown|participant\s*[12]?)$/i.test(sportsCleanName(value));
+}
+
+function sportsNameKey(value) {
+  return sportsCleanName(value)
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\b(football club|football|basketball club|hockey club|fc|cf|sc|club)\b/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function sportsStatusInfo(status, fallback) {
+  const type = status && status.type ? status.type : status || {};
+  const state = String(type.state || type.name || fallback || "").toLowerCase();
+  const text = boundedText(type.detail || type.shortDetail || type.description || type.displayValue || type.name || state, 80, "");
+  const blob = (state + " " + text).toLowerCase();
+  if (/postponed|cancelled|canceled|abandoned|suspended|forfeit|walkover/.test(blob)) return { state: "unknown", text: text };
+  if (state === "in" || state === "halftime" || /\blive\b|in progress|in-play|in play|critical/.test(blob)) return { state: "live", text: text };
+  if (state === "post" || /final|complete|ended|full time|finished/.test(blob)) return { state: "final", text: text };
+  if (state === "pre" || /scheduled|not started|upcoming/.test(blob)) return { state: "scheduled", text: text };
+  return { state: "unknown", text: text };
+}
+
+function sportsParticipant(value, index) {
+  const name = sportsCleanName(teamName(value));
+  const score = value && value.score !== undefined
+    ? String(value.score)
+    : value && value.linescores && value.linescores[0] && value.linescores[0].value !== undefined
+      ? String(value.linescores[0].value)
+      : "";
+  return {
+    id: String(value && (value.id || (value.team && value.team.id) || (value.athlete && value.athlete.id)) || sportsNameKey(name)),
+    name: name,
+    shortName: name,
+    score: score,
+    rank: value && (value.rank || value.order || value.position) ? String(value.rank || value.order || value.position) : "",
+    participantType: value && value.athlete ? "player" : "team",
+    index: index,
+  };
+}
+
+function sportsRow(source, board, state, event, competition, participants, status, metadata) {
+  const list = (participants || []).filter(function (item) { return item && !sportsGenericName(item.name); });
+  if (list.length < 2) return null;
+  const row = {
+    source: source,
+    sourcePriority: SPORTS_SOURCE_PRIORITY[source] || 70,
+    sport: board.sport || "other",
+    kind: board.kind || "team",
+    league: board.label || "Sports",
+    key: board.key || "sports",
+    ico: board.ico || "🎯",
+    state: state,
+    status: status || (state === "live" ? "LIVE" : state === "final" ? "FINAL" : "UPCOMING"),
+    eventId: String(event && event.id || ""),
+    competitionId: String(competition && competition.id || ""),
+    startTime: String((competition && (competition.date || competition.startDate)) || (event && (event.date || event.startDate)) || ""),
+    sourcePath: board.path + "/scoreboard",
+    link: safeHttpUrl(event && event.links && event.links[0] && event.links[0].href || "https://www.espn.com/scoreboard"),
+    confidence: source === "thesportsdb" ? "secondary" : "authoritative",
+    competitors: list,
+    metadata: metadata || {},
+  };
+  row.away = list[0].name;
+  row.home = list[1].name;
+  row.aScore = list[0].score;
+  row.hScore = list[1].score;
+  if (row.kind === "golf") {
+    row.away = boundedText(event && (event.shortName || event.name) || board.label, 80, board.label);
+    row.home = list.slice(0, 5).map(function (item) {
+      return (item.rank ? "T" + item.rank + " " : "") + item.name + (item.score ? " (" + item.score + ")" : "");
+    }).join(" · ");
+    row.aScore = "";
+    row.hScore = "";
+  }
+  return row;
+}
+
+function parseSportsESPNCompetition(event, board, competition) {
+  if (!competition) return [];
+  const status = sportsStatusInfo(competition.status || event.status, "");
+  if (status.state === "unknown") return [];
+  let raw = Array.isArray(competition.competitors) ? competition.competitors.slice() : [];
+  if (board.kind === "team" || board.kind === "tennis" || board.kind === "combat") {
+    const away = raw.find(function (item) { return item.homeAway === "away"; });
+    const home = raw.find(function (item) { return item.homeAway === "home"; });
+    if (away && home) raw = [away, home];
+  } else {
+    raw.sort(function (a, b) { return Number(a.order || a.rank || a.position || 999) - Number(b.order || b.rank || b.position || 999); });
+  }
+  const participants = raw.map(sportsParticipant);
+  if (participants.length < 2) return [];
+  const scored = participants.slice(0, 2).every(function (item) { return sportsHasScore(item.score); });
+  const progress = String(status.text || "").toLowerCase();
+  if ((board.kind === "team" || board.kind === "tennis") && (status.state === "live" || status.state === "final") && !scored) return [];
+  if (board.kind === "golf" && (status.state === "live" || status.state === "final") && participants.filter(function (item) { return sportsHasScore(item.score) || item.rank; }).length < 2) return [];
+  if (board.kind === "combat" && status.state === "live" && !/round|\b\d+[:']\d+\b|live|in progress/.test(progress)) return [];
+  if (status.state === "scheduled" && !competition.date && !event.date) return [];
+  return [sportsRow("espn", board, status.state, event, competition, participants, status.text, {
+    clock: competition.status && competition.status.clock,
+    period: competition.status && competition.status.period,
+    progress: status.text,
+    venue: competition.venue && (competition.venue.fullName || competition.venue.name),
+  })].filter(Boolean);
+}
+
+function parseSportsESPN(data, board) {
+  const rows = [];
+  (data && Array.isArray(data.events) ? data.events : []).forEach(function (event) {
+    if (board.kind === "tennis" && Array.isArray(event.groupings)) {
+      event.groupings.forEach(function (group) {
+        (group.competitions || []).forEach(function (competition) {
+          rows.push.apply(rows, parseSportsESPNCompetition(event, board, competition));
+        });
+      });
+    } else {
+      rows.push.apply(rows, parseSportsESPNCompetition(event, board, event.competitions && event.competitions[0]));
+    }
+  });
+  return rows;
+}
+
+function sportsCentralDate() {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+}
+
+function sportsTeamRow(source, board, state, id, startTime, awayName, homeName, awayScore, homeScore, status, metadata, link) {
+  if (sportsGenericName(awayName) || sportsGenericName(homeName)) return null;
+  const participants = [
+    { id: sportsNameKey(awayName), team: { name: awayName }, score: awayScore },
+    { id: sportsNameKey(homeName), team: { name: homeName }, score: homeScore },
+  ].map(sportsParticipant);
+  if ((state === "live" || state === "final") && !participants.every(function (item) { return sportsHasScore(item.score); })) return null;
+  const row = sportsRow(source, board, state, { id: id, date: startTime, links: [{ href: link }] }, { id: id, date: startTime }, participants, status, metadata);
+  return row;
+}
+
+function sportsCanonicalKey(row) {
+  const names = (row.competitors || []).map(function (item) { return sportsNameKey(item.name); }).filter(Boolean).sort().join("|");
+  const day = row.startTime ? String(row.startTime).slice(0, 10) : "";
+  if (row.kind === "golf") return row.kind + ":" + row.league + ":" + day;
+  return row.kind + ":" + row.sport + ":" + day + ":" + names;
+}
+
+function sportsMerge(rows) {
+  const map = new Map();
+  (rows || []).forEach(function (row) {
+    if (!row) return;
+    const key = sportsCanonicalKey(row);
+    const current = map.get(key);
+    if (!current || (row.sourcePriority || 0) > (current.sourcePriority || 0) || (row.state === "live" && current.state !== "live")) {
+      map.set(key, row);
+    }
+  });
+  return Array.from(map.values());
+}
+
+function tsdbIsLive(value) {
+  const text = String(value || "").toLowerCase();
+  // Do not treat a bare numeric minute/progress field as proof of live play.
+  return /\blive\b|in[ -]?play|1st half|2nd half|half[- ]?time|extra time|\bq[1-4]\b|\bot\b|\bset\s*[1-5]\b|\bperiod\s*[1-4]\b|\bround\s*\d+/.test(text);
+}
+
 async function buildSportsLive(requestIdValue) {
-  const packs = await mapLimit(SPORT_LEAGUES, 5, async function (league) {
+  const generatedAt = new Date().toISOString();
+  const rows = [];
+  const sources = [];
+  const started = Date.now();
+  const packs = await mapLimit(SPORT_LEAGUES, 6, async function (league) {
     const data = await fetchJson(
       "https://site.api.espn.com/apis/site/v2/sports/" + league.path + "/scoreboard",
       7500,
       requestIdValue
     );
-    return {
-      league: league,
-      events: data && Array.isArray(data.events) ? data.events : [],
-      ok: Boolean(data && Array.isArray(data.events)),
-    };
+    return { league: league, data: data, ok: Boolean(data && Array.isArray(data.events)) };
   });
-  const live = [];
-  const finals = [];
   packs.filter(Boolean).forEach(function (pack) {
-    pack.events.forEach(function (event) {
-      const competition = event.competitions && event.competitions[0];
-      if (!competition) return;
-      const status = (competition.status && competition.status.type) || {};
-      const state = String(status.state || "");
-      const description = boundedText(
-        status.detail || status.shortDetail || status.description,
-        70,
-        ""
-      );
-      let isLive = state === "in" || state === "halftime";
-      if (isLive && /postponed|cancel|suspended|abandoned/i.test(description)) isLive = false;
-      if (isLive && /^delay/i.test(description) && !/\d|Q\d|period|inning|set /i.test(description)) {
-        isLive = false;
-      }
-      const isFinal = state === "post";
-      if (!isLive && !isFinal) return;
-      const competitors = Array.isArray(competition.competitors) ? competition.competitors : [];
-      const home = competitors.find(function (item) {
-        return item.homeAway === "home";
-      }) || competitors[1];
-      const away = competitors.find(function (item) {
-        return item.homeAway === "away";
-      }) || competitors[0];
-      const awayName = teamName(away);
-      const homeName = teamName(home);
-      if (!awayName || !homeName || /^(away|home|tbd)$/i.test(awayName + " " + homeName)) return;
-      const awayScore = away && away.score !== undefined ? String(away.score) : "";
-      const homeScore = home && home.score !== undefined ? String(home.score) : "";
-      const hasScore = awayScore !== "" && homeScore !== "";
-      if (isLive && !hasScore) return;
-      const eventLink = event.links && event.links[0] && event.links[0].href;
-      const row = {
-        league: pack.league.label,
-        key: pack.league.key,
-        away: awayName,
-        home: homeName,
-        aScore: hasScore ? awayScore : "—",
-        hScore: hasScore ? homeScore : "—",
-        status: description || (isLive ? "LIVE" : "FINAL"),
-        link: safeHttpUrl(eventLink || "https://www.espn.com/scoreboard"),
-      };
-      if (isLive) live.push(row);
-      else if (hasScore) finals.push(row);
-    });
+    if (pack.data) rows.push.apply(rows, parseSportsESPN(pack.data, pack.league));
   });
+  sources.push({
+    id: "espn",
+    label: "ESPN scoreboards",
+    role: "broad primary",
+    ok: packs.filter(function (pack) { return pack && pack.ok; }).length > 0,
+    count: rows.length,
+    tried: SPORT_LEAGUES.length,
+    latencyMs: Date.now() - started,
+  });
+
+  const backupDefs = [
+    { id: "mlb", label: "MLB StatsAPI", endpoint: "https://statsapi.mlb.com/api/v1/schedule?sportId=1&hydrate=linescore,team" },
+    { id: "nhl", label: "NHL web API", endpoint: "https://api-web.nhle.com/v1/score/" + sportsCentralDate() },
+    { id: "afl", label: "Squiggle AFL", endpoint: "https://api.squiggle.com.au/?q=games;year=" + new Date().getUTCFullYear() + ";live=1" },
+  ];
+  const backups = await mapLimit(backupDefs, 3, async function (definition) {
+    const sourceStart = Date.now();
+    const data = await fetchJson(definition.endpoint, 7500, requestIdValue);
+    const parsed = [];
+    if (definition.id === "mlb") {
+      (data && data.dates || []).forEach(function (day) {
+        (day.games || []).forEach(function (game) {
+          const away = game.teams && game.teams.away;
+          const home = game.teams && game.teams.home;
+          const awayName = away && away.team && (away.team.teamName || away.team.name || away.team.abbreviation);
+          const homeName = home && home.team && (home.team.teamName || home.team.name || home.team.abbreviation);
+          const text = String(game.status && (game.status.detailedState || game.status.abstractGameState || game.status.statusCode) || "");
+          const lower = text.toLowerCase();
+          const state = /live|progress|warmup|manager challenge/.test(lower) ? "live" : /final|complete|game over/.test(lower) ? "final" : /scheduled|pre-game|preview|delayed/.test(lower) ? "scheduled" : "unknown";
+          if (state !== "unknown") {
+            const row = sportsTeamRow("mlb", { key: "mlb", path: "statsapi.mlb.com/api/v1/schedule", label: "MLB", sport: "baseball", kind: "team", ico: "⚾" }, state, game.gamePk, game.gameDate, awayName, homeName, away && away.score, home && home.score, text, { inning: game.linescore && game.linescore.currentInning }, "https://www.mlb.com/scores");
+            if (row) parsed.push(row);
+          }
+        });
+      });
+    } else if (definition.id === "nhl") {
+      (data && data.games || []).forEach(function (game) {
+        const awayName = game.awayTeam && (game.awayTeam.name && (game.awayTeam.name.default || game.awayTeam.name) || game.awayTeam.placeName && game.awayTeam.placeName.default || game.awayTeam.abbrev);
+        const homeName = game.homeTeam && (game.homeTeam.name && (game.homeTeam.name.default || game.homeTeam.name) || game.homeTeam.placeName && game.homeTeam.placeName.default || game.homeTeam.abbrev);
+        const text = String(game.gameState || game.gameScheduleState || "");
+        const state = /live|crit|critical/i.test(text) ? "live" : /final|off|over|complete/i.test(text) ? "final" : /scheduled|pre|fut/i.test(text) ? "scheduled" : "unknown";
+        if (state !== "unknown") {
+          const row = sportsTeamRow("nhl", { key: "nhl", path: "api-web.nhle.com/v1/score", label: "NHL", sport: "hockey", kind: "team", ico: "🏒" }, state, game.id || game.gameId, game.startTimeUTC || game.startTime, awayName, homeName, game.awayTeam && game.awayTeam.score, game.homeTeam && game.homeTeam.score, text, { period: game.periodDescriptor && game.periodDescriptor.number }, "https://www.nhl.com/scores");
+          if (row) parsed.push(row);
+        }
+      });
+    } else {
+      (data && data.games || []).forEach(function (game) {
+        const awayName = game.away || game.ateam;
+        const homeName = game.home || game.hteam;
+        const complete = Number(game.complete);
+        if (!Number.isFinite(complete)) return;
+        const state = complete > 0 && complete < 100 ? "live" : complete >= 100 ? "final" : "scheduled";
+        const row = sportsTeamRow("afl", { key: "afl", path: "api.squiggle.com.au/?q=games", label: "AFL", sport: "afl", kind: "team", ico: "🏉" }, state, game.id || game.gameid, game.date || game.start, awayName, homeName, game.awayscore !== undefined ? game.awayscore : game.ascore, game.homescore !== undefined ? game.homescore : game.hscore, state === "live" ? "LIVE" : state === "final" ? "FINAL" : "UPCOMING", { complete: complete }, "https://www.afl.com.au/fixture");
+        if (row) parsed.push(row);
+      });
+    }
+    return { definition: definition, rows: parsed, ok: true, latencyMs: Date.now() - sourceStart };
+  });
+  backups.forEach(function (pack, index) {
+    const definition = backupDefs[index];
+    if (!pack) {
+      sources.push({ id: definition.id, label: definition.label, role: "league authority", ok: false, count: 0, error: "unavailable" });
+      return;
+    }
+    rows.push.apply(rows, pack.rows || []);
+    sources.push({ id: pack.definition.id, label: pack.definition.label, role: "league authority", ok: pack.ok, count: (pack.rows || []).length, latencyMs: pack.latencyMs });
+  });
+
+  const tsdbDefs = [
+    ["Soccer", "⚽", "soccer"],
+    ["Tennis", "🎾", "tennis"],
+    ["Cricket", "🏏", "cricket"],
+    ["Rugby", "🏉", "rugby"],
+  ];
+  const tsdbStart = Date.now();
+  const tsdbPacks = await mapLimit(tsdbDefs, 3, async function (definition) {
+    const data = await fetchJson("https://www.thesportsdb.com/api/v1/json/123/livescore.php?s=" + encodeURIComponent(definition[0]), 7500, requestIdValue);
+    const parsed = [];
+    const list = data && (data.events || data.livescore);
+    (Array.isArray(list) ? list : []).forEach(function (event) {
+      const status = String(event.strStatus || event.strProgress || "");
+      if (!tsdbIsLive(status)) return;
+      const row = sportsTeamRow("thesportsdb", { key: definition[2], path: "www.thesportsdb.com/api/v1/json/123/livescore.php", label: boundedText(event.strLeague || definition[0], 40, definition[0]), sport: definition[2], kind: definition[2] === "tennis" ? "tennis" : "team", ico: definition[1] }, "live", event.idEvent, event.strTimestamp || event.dateEvent, event.strAwayTeam, event.strHomeTeam, event.intAwayScore, event.intHomeScore, "LIVE " + status, { progress: status }, "https://www.thesportsdb.com/");
+      if (row) parsed.push(row);
+    });
+    return { rows: parsed, ok: true };
+  });
+  const tsdbRows = [];
+  tsdbPacks.filter(Boolean).forEach(function (pack) { tsdbRows.push.apply(tsdbRows, pack.rows || []); });
+  rows.push.apply(rows, tsdbRows);
+  sources.push({ id: "thesportsdb", label: "TheSportsDB livescore", role: "secondary international gap filler", ok: tsdbPacks.filter(Boolean).length > 0, count: tsdbRows.length, latencyMs: Date.now() - tsdbStart, error: tsdbPacks.filter(Boolean).length > 0 ? "" : "unavailable" });
+
+  const merged = sportsMerge(rows);
+  const today = sportsCentralDate();
+  const live = merged.filter(function (row) { return row.state === "live"; }).slice(0, 80);
+  const finals = merged.filter(function (row) { return row.state === "final" && (!row.startTime || String(row.startTime).slice(0, 10) === today); }).slice(0, 120);
+  const upcoming = merged.filter(function (row) { return row.state === "scheduled"; }).slice(0, 40);
   return {
-    live: live.slice(0, 30),
-    finals: finals.slice(0, 36),
+    live: live,
+    finals: finals,
+    upcoming: upcoming,
+    sources: sources,
     sourceStatus: {
-      ok: packs.filter(function (pack) { return pack && pack.ok; }).length,
-      tried: SPORT_LEAGUES.length,
+      ok: sources.filter(function (source) { return source.ok; }).length,
+      tried: sources.length,
     },
-    generatedAt: new Date().toISOString(),
+    generatedAt: generatedAt,
   };
 }
 
@@ -706,7 +954,8 @@ async function buildBundle(location, symbols, env, requestIdValue) {
     main: [], sports: [], sourcesOk: 0, sourcesTried: 0, generatedAt: new Date().toISOString(),
   };
   const sports = results[1].status === "fulfilled" ? results[1].value : {
-    live: [], finals: [], sourceStatus: { ok: 0, tried: SPORT_LEAGUES.length },
+    live: [], finals: [], upcoming: [], sources: [],
+    sourceStatus: { ok: 0, tried: SPORT_LEAGUES.length + 4 },
     generatedAt: new Date().toISOString(),
   };
   const weather = results[2].status === "fulfilled" ? results[2].value : {
