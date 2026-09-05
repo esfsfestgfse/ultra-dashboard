@@ -857,9 +857,16 @@
       return String(right.startTime || right.updatedAt || "").localeCompare(String(left.startTime || left.updatedAt || ""));
     };
     const today = dateKey(new Date(now));
+    // Scoreboard providers often key their slate by UTC while the dashboard
+    // is read in Central time. Keep the local-day finals plus the previous
+    // overnight window so a 3 AM refresh does not hide last night's finals.
+    const recentFinalCutoff = now - 18 * 60 * 60 * 1000;
     const live = merged.filter(function (record) { return record.state === "live"; }).sort(sortRecords).slice(0, 80);
     const finals = merged.filter(function (record) {
-      return record.state === "final" && (!record.startTime || dateKey(record.startTime) === today);
+      if (record.state !== "final") return false;
+      if (!record.startTime) return true;
+      const start = new Date(record.startTime).getTime();
+      return dateKey(record.startTime) === today || (Number.isFinite(start) && start >= recentFinalCutoff && start <= now);
     }).sort(sortRecords).slice(0, 120);
     const upcoming = merged.filter(function (record) {
       return record.state === "scheduled" && (favorite(record) || !record.startTime || new Date(record.startTime).getTime() < now + 36 * 60 * 60 * 1000);
