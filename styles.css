@@ -19,8 +19,8 @@
   --danger: #ff6d7d;
   --chip: rgba(255, 91, 183, 0.12);
   --shadow: 0 18px 60px rgba(0, 0, 0, 0.34);
-  --display-font: "Barlow Condensed", "Arial Narrow", sans-serif;
-  --mono-font: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+  --display-font: "Chakra Petch", "Arial Narrow", sans-serif;
+  --mono-font: "Share Tech Mono", "SFMono-Regular", Consolas, monospace;
   --radius: 11px;
   --gap: 12px;
   color-scheme: dark;
@@ -447,16 +447,16 @@ h3 {
 .ticker-item {
   display: flex;
   flex: 0 0 auto;
-  min-width: 210px;
-  max-width: 330px;
+  min-width: 320px;
+  max-width: 560px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 7px;
   background: rgba(255, 255, 255, 0.035);
 }
 
 .sports-section .ticker-item {
-  min-width: 230px;
-  max-width: 300px;
+  min-width: 360px;
+  max-width: 520px;
 }
 
 .ticker-link,
@@ -464,9 +464,9 @@ h3 {
   display: flex;
   align-items: center;
   width: 100%;
-  min-height: 34px;
+  min-height: 48px;
   gap: 9px;
-  padding: 7px 10px;
+  padding: 8px 15px;
   border-radius: 6px;
   color: var(--soft);
   background: transparent;
@@ -486,7 +486,11 @@ h3 {
 .ticker-source {
   flex: 0 0 auto;
   color: var(--accent);
-  font-size: 0.62rem;
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--chip);
+  font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -498,8 +502,8 @@ h3 {
 
 .ticker-copy {
   overflow: hidden;
-  font: 500 0.76rem/1.1 var(--display-font);
-  letter-spacing: 0.015em;
+  font: 600 clamp(1rem, 1.45vw, 1.85rem)/1.05 var(--display-font);
+  letter-spacing: 0.04em;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -516,7 +520,7 @@ h3 {
   justify-content: space-between;
   gap: 8px;
   color: var(--text);
-  font: 600 0.78rem/1 var(--display-font);
+  font: 600 clamp(0.94rem, 1.25vw, 1.55rem)/1 var(--display-font);
 }
 
 .score-line span:first-child {
@@ -527,13 +531,13 @@ h3 {
 
 .score-line strong {
   color: var(--accent);
-  font: 600 0.75rem/1 var(--mono-font);
+  font: 600 clamp(0.9rem, 1.2vw, 1.45rem)/1 var(--mono-font);
 }
 
 .score-status {
   overflow: hidden;
   color: var(--muted);
-  font-size: 0.54rem;
+  font-size: 0.66rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -664,29 +668,30 @@ h3 {
 }
 
 .news-frame .ticker-set {
-  flex-direction: column;
-  align-items: stretch;
-  width: min(100%, 660px);
+  align-items: center;
+  width: max-content;
+  min-height: 100%;
 }
 
 .news-frame .ticker-track {
-  width: 100%;
+  width: max-content;
   min-height: 100%;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: center;
 }
 
 .news-frame .ticker-item {
-  min-width: 0;
-  max-width: none;
+  min-width: 420px;
+  max-width: 700px;
 }
 
 .news-frame .ticker-set[aria-hidden="true"] {
-  display: none;
+  display: flex;
 }
 
 .news-frame .ticker-link,
 .news-frame .ticker-action {
-  min-height: 32px;
+  min-height: 58px;
 }
 
 .news-frame .ticker-copy {
@@ -1199,6 +1204,22 @@ body.density-compact .focus-content {
     min-height: 220px;
   }
 
+  .ticker-item,
+  .sports-section .ticker-item,
+  .news-frame .ticker-item {
+    min-width: 270px;
+    max-width: 420px;
+  }
+
+  .ticker-copy {
+    font-size: 0.92rem;
+  }
+
+  .news-frame .ticker-link,
+  .news-frame .ticker-action {
+    min-height: 43px;
+  }
+
   .settings-grid {
     grid-template-columns: 1fr;
   }
@@ -1236,7 +1257,9 @@ body.density-compact .focus-content {
 
 @media (max-height: 620px) and (min-width: 1000px) {
   .app-shell {
+    height: 480px;
     min-height: 480px;
+    max-height: 480px;
     padding: 7px 10px 6px;
   }
 
@@ -1263,7 +1286,51 @@ body.density-compact .focus-content {
   }
 
   .content-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(230px, 0.3fr);
+    grid-template-rows: repeat(2, minmax(0, 1fr));
     gap: 7px;
+  }
+
+  .news-panel {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .sports-news-panel {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .focus-panel {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .control-panel {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .ticker-item,
+  .sports-section .ticker-item,
+  .news-frame .ticker-item {
+    min-width: 330px;
+    max-width: 520px;
+  }
+
+  .ticker-link,
+  .ticker-action {
+    min-height: 43px;
+    padding-inline: 11px;
+  }
+
+  .ticker-copy {
+    font-size: clamp(1rem, 1.4vw, 1.42rem);
+  }
+
+  .news-frame .ticker-link,
+  .news-frame .ticker-action {
+    min-height: 46px;
   }
 
   .app-footer {

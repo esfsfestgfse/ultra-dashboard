@@ -373,13 +373,13 @@
       document.getElementById("newsTrack"),
       document.getElementById("newsViewport"),
       document.getElementById("newsToggle"),
-      "vertical"
+      "horizontal"
     ),
     sportsNews: new Ticker(
       document.getElementById("sportsNewsTrack"),
       document.getElementById("sportsNewsViewport"),
       document.getElementById("sportsNewsToggle"),
-      "vertical"
+      "horizontal"
     ),
   };
 
